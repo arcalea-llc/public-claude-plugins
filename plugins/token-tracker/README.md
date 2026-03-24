@@ -15,7 +15,7 @@ A **Stop hook** fires after every assistant turn, parses the session transcript 
 
 ## Quick Start
 
-1. **Install the plugin** from the Arcalea marketplace — everything starts automatically.
+1. **Install the plugin** — add the marketplace with `/plugin marketplace add arcalea-llc/public-claude-plugins`, then `/plugin install token-tracker@arcalea-public`. Everything starts automatically.
 2. **Ask Claude** "show me my token usage" or "open the token dashboard" — it will use the MCP tools to give you the URL.
 3. **Open the dashboard** in your browser to see interactive charts, session tables, and drill-down views.
 

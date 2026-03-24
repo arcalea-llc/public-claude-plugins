@@ -4,9 +4,15 @@ A public plugin marketplace for [Claude Code](https://claude.ai/claude-code) fro
 
 ## Install this marketplace
 
-```
-/install-marketplace https://raw.githubusercontent.com/arcalea-llc/public-claude-plugins/main/.claude-plugin/marketplace.json
-```
+1. Add the marketplace:
+   ```
+   /plugin marketplace add arcalea-llc/public-claude-plugins
+   ```
+
+2. Install a plugin:
+   ```
+   /plugin install token-tracker@arcalea-public
+   ```
 
 ## Plugins
 
