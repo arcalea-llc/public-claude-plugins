@@ -20,4 +20,6 @@ Track Claude Code token usage in a local SQLite database and visualize it with a
 - Auto-starts via bundled MCP server — no manual setup needed
 - Persistent worker daemon that survives session restarts
 
+![Token Tracker Dashboard](plugins/token-tracker/assets/dashboard-screenshot.png)
+
 See [plugins/token-tracker/README.md](plugins/token-tracker/README.md) for details.

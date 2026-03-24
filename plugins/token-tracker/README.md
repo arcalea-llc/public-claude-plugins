@@ -2,6 +2,8 @@
 
 Track Claude Code token usage in a local SQLite database and visualize it with an interactive D3.js dashboard that auto-starts with the plugin.
 
+![Token Tracker Dashboard](assets/dashboard-screenshot.png)
+
 ## How It Works
 
 The plugin uses a **two-process architecture** similar to claude-mem:
