@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Token Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #242836;
+    --border: #2e3348;
+    --text: #e2e4eb;
+    --text-dim: #8b8fa3;
+    --accent: #6c8cff;
+    --accent2: #a78bfa;
+    --green: #34d399;
+    --orange: #fb923c;
+    --pink: #f472b6;
+    --cyan: #22d3ee;
+    --red: #f87171;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.5;
+  }
+
+  .container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 24px;
+  }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  header h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  header h1 span {
+    color: var(--accent);
+  }
+
+  .period-tabs {
+    display: flex;
+    gap: 4px;
+    background: var(--surface);
+    padding: 4px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+
+  .period-tab {
+    padding: 8px 18px;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 7px;
+    transition: all 0.2s;
+  }
+
+  .period-tab:hover { color: var(--text); }
+  .period-tab.active {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  /* Summary Cards */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+
+  .card-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+
+  .card-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .card-sub {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  .card-value.cost { color: var(--green); }
+  .card-value.input { color: var(--accent); }
+  .card-value.output { color: var(--accent2); }
+  .card-value.cache { color: var(--cyan); }
+
+  /* Chart panels */
+  .chart-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+
+  .chart-title {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .chart-legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+  }
+
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+
+  svg text {
+    fill: var(--text-dim);
+    font-size: 11px;
+  }
+
+  svg .domain, svg .tick line {
+    stroke: var(--border);
+  }
+
+  .tooltip {
+    position: absolute;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 0.8rem;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 100;
+    min-width: 180px;
+  }
+
+  .tooltip.visible { opacity: 1; }
+
+  .tooltip-title {
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: var(--text);
+  }
+
+  .tooltip-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 2px 0;
+  }
+
+  .tooltip-label { color: var(--text-dim); }
+  .tooltip-value { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  /* Two-column chart layout */
+  .chart-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  @media (max-width: 900px) {
+    .chart-row { grid-template-columns: 1fr; }
+  }
+
+  /* Sessions table */
+  .table-container {
+    overflow-x: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+
+  thead th {
+    text-align: left;
+    padding: 12px 16px;
+    color: var(--text-dim);
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  thead th:hover { color: var(--text); }
+
+  tbody tr {
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  tbody tr:hover { background: var(--surface2); }
+
+  tbody td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .expand-row td {
+    padding: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .expand-content {
+    padding: 16px 32px;
+    background: var(--bg);
+    max-height: 400px;
+    overflow-y: auto;
+  }
+
+  .event-item {
+    display: grid;
+    grid-template-columns: 100px 80px 1fr 120px 120px;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.8rem;
+  }
+
+  .event-item:last-child { border-bottom: none; }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+  }
+
+  .badge-turn { background: rgba(108, 140, 255, 0.15); color: var(--accent); }
+  .badge-tool { background: rgba(167, 139, 250, 0.15); color: var(--accent2); }
+
+  .preview-text {
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 400px;
+  }
+
+  /* Pagination */
+  .pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    margin-top: 16px;
+  }
+
+  .pagination button {
+    padding: 6px 14px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.8rem;
+  }
+
+  .pagination button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .pagination span {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+
+  .loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    color: var(--text-dim);
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-dim);
+  }
+
+  .empty-state h2 {
+    font-size: 1.2rem;
+    margin-bottom: 8px;
+    color: var(--text);
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1><span>Claude</span> Token Tracker</h1>
+    <div class="period-tabs" id="period-tabs">
+      <button class="period-tab active" data-period="day">Day</button>
+      <button class="period-tab" data-period="week">Week</button>
+      <button class="period-tab" data-period="month">Month</button>
+      <button class="period-tab" data-period="quarter">Quarter</button>
+      <button class="period-tab" data-period="all">All Time</button>
+    </div>
+  </header>
+
+  <!-- Summary Cards -->
+  <div class="cards" id="cards"></div>
+
+  <!-- Main time series chart -->
+  <div class="chart-panel">
+    <div class="chart-title">
+      <span>Token Usage Over Time</span>
+      <div class="chart-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>Input</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--accent2)"></div>Output</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--cyan)"></div>Cache Read</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div>Cache Write</div>
+      </div>
+    </div>
+    <div id="timeseries-chart"></div>
+  </div>
+
+  <!-- Model time series -->
+  <div class="chart-panel">
+    <div class="chart-title">
+      <span>Token Usage by Model Over Time</span>
+      <div class="chart-legend" id="model-ts-legend"></div>
+    </div>
+    <div id="model-timeseries-chart"></div>
+  </div>
+
+  <!-- Breakdown charts row -->
+  <div class="chart-row">
+    <div class="chart-panel">
+      <div class="chart-title">Cost by Token Type</div>
+      <div id="donut-chart"></div>
+    </div>
+    <div class="chart-panel">
+      <div class="chart-title">Tokens by Model</div>
+      <div id="model-chart"></div>
+    </div>
+  </div>
+
+  <!-- Tools chart -->
+  <div class="chart-panel">
+    <div class="chart-title">Top Tools by Token Usage</div>
+    <div id="tools-chart"></div>
+  </div>
+
+  <!-- Sessions table -->
+  <div class="chart-panel">
+    <div class="chart-title">Sessions</div>
+    <div class="table-container" id="sessions-table"></div>
+    <div class="pagination" id="sessions-pagination"></div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+// =========================================================================
+// State
+// =========================================================================
+let currentPeriod = 'day';
+let sessionsPage = 1;
+let expandedSession = null;
+
+const fmt = d3.format(',');
+const fmtK = (v) => v >= 1_000_000 ? d3.format('.2f')(v / 1_000_000) + 'M'
+                   : v >= 1_000 ? d3.format('.1f')(v / 1_000) + 'K'
+                   : fmt(v);
+const fmtCost = d3.format('$,.2f');
+
+const colors = {
+  input: '#6c8cff',
+  output: '#a78bfa',
+  cache_read: '#22d3ee',
+  cache_creation: '#fb923c',
+};
+
+const modelColors = {
+  opus: '#e879f9',
+  sonnet: '#6c8cff',
+  haiku: '#34d399',
+  unknown: '#94a3b8',
+};
+
+const tooltip = d3.select('#tooltip');
+
+// =========================================================================
+// Data fetching
+// =========================================================================
+async function api(path) {
+  const res = await fetch(path);
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json();
+}
+
+// =========================================================================
+// Summary Cards
+// =========================================================================
+function renderCards(summary) {
+  const cards = [
+    { label: 'Total Tokens', value: fmtK(summary.total_tokens), cls: '' },
+    { label: 'Estimated Cost', value: fmtCost(summary.estimated_cost_usd), cls: 'cost' },
+    { label: 'Input Tokens', value: fmtK(summary.total_input_tokens), cls: 'input' },
+    { label: 'Output Tokens', value: fmtK(summary.total_output_tokens), cls: 'output' },
+    { label: 'Cache Read', value: fmtK(summary.total_cache_read_tokens), cls: 'cache' },
+    { label: 'Sessions', value: fmt(summary.total_sessions), cls: '',
+      sub: `${fmt(summary.total_turns)} turns · ${fmt(summary.total_tool_uses)} tool uses` },
+  ];
+
+  const container = d3.select('#cards');
+  container.html('');
+  cards.forEach(c => {
+    const div = container.append('div').attr('class', 'card');
+    div.append('div').attr('class', 'card-label').text(c.label);
+    div.append('div').attr('class', `card-value ${c.cls}`).text(c.value);
+    if (c.sub) div.append('div').attr('class', 'card-sub').text(c.sub);
+  });
+}
+
+// =========================================================================
+// Time Series (Stacked Area)
+// =========================================================================
+function renderTimeSeries(data) {
+  const container = d3.select('#timeseries-chart');
+  container.html('');
+
+  if (!data.data || data.data.length === 0) {
+    container.append('div').attr('class', 'empty-state')
+      .html('<h2>No data yet</h2><p>Token usage will appear here as you use Claude.</p>');
+    return;
+  }
+
+  const margin = { top: 20, right: 30, bottom: 40, left: 70 };
+  const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
+  const height = 320 - margin.top - margin.bottom;
+
+  const svg = container.append('svg')
+    .attr('width', width + margin.left + margin.right)
+    .attr('height', height + margin.top + margin.bottom)
+    .append('g')
+    .attr('transform', `translate(${margin.left},${margin.top})`);
+
+  const keys = ['input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_creation_tokens'];
+  const colorMap = {
+    input_tokens: colors.input,
+    output_tokens: colors.output,
+    cache_read_tokens: colors.cache_read,
+    cache_creation_tokens: colors.cache_creation,
+  };
+
+  const parseDate = (d) => {
+    if (d.includes('T')) return new Date(d);
+    if (d.includes('-W')) {
+      const [y, w] = d.split('-W');
+      const jan1 = new Date(+y, 0, 1);
+      return new Date(jan1.getTime() + (+w - 1) * 7 * 86400000);
+    }
+    if (d.match(/^\d{4}-\d{2}$/)) return new Date(d + '-01');
+    return new Date(d);
+  };
+
+  const series = data.data.map(d => ({
+    ...d,
+    date: parseDate(d.bucket),
+  }));
+
+  const stack = d3.stack().keys(keys)(series);
+
+  const x = d3.scaleTime()
+    .domain(d3.extent(series, d => d.date))
+    .range([0, width]);
+
+  const y = d3.scaleLinear()
+    .domain([0, d3.max(stack[stack.length - 1], d => d[1]) * 1.1])
+    .nice()
+    .range([height, 0]);
+
+  // Grid lines
+  svg.append('g')
+    .attr('class', 'grid')
+    .call(d3.axisLeft(y).tickSize(-width).tickFormat(''))
+    .call(g => g.selectAll('.tick line').attr('stroke', '#2e3348').attr('stroke-dasharray', '2,4'))
+    .call(g => g.select('.domain').remove());
+
+  // Areas
+  const area = d3.area()
+    .x(d => x(d.data.date))
+    .y0(d => y(d[0]))
+    .y1(d => y(d[1]))
+    .curve(d3.curveMonotoneX);
+
+  svg.selectAll('.area-layer')
+    .data(stack)
+    .join('path')
+    .attr('class', 'area-layer')
+    .attr('d', area)
+    .attr('fill', (d) => colorMap[d.key])
+    .attr('fill-opacity', 0.6);
+
+  // Axes
+  svg.append('g')
+    .attr('transform', `translate(0,${height})`)
+    .call(d3.axisBottom(x).ticks(Math.min(series.length, 10)));
+
+  svg.append('g')
+    .call(d3.axisLeft(y).ticks(6).tickFormat(fmtK));
+
+  // Hover overlay
+  const focus = svg.append('g').style('display', 'none');
+  focus.append('line')
+    .attr('class', 'focus-line')
+    .attr('y1', 0).attr('y2', height)
+    .attr('stroke', '#fff').attr('stroke-opacity', 0.3)
+    .attr('stroke-dasharray', '4,4');
+
+  svg.append('rect')
+    .attr('width', width).attr('height', height)
+    .attr('fill', 'none')
+    .attr('pointer-events', 'all')
+    .on('mousemove', function(event) {
+      const [mx] = d3.pointer(event);
+      const date = x.invert(mx);
+      const bisect = d3.bisector(d => d.date).left;
+      const idx = Math.min(bisect(series, date), series.length - 1);
+      const d = series[idx];
+      if (!d) return;
+
+      focus.style('display', null);
+      focus.select('.focus-line').attr('x1', x(d.date)).attr('x2', x(d.date));
+
+      tooltip.classed('visible', true)
+        .style('left', (event.pageX + 16) + 'px')
+        .style('top', (event.pageY - 10) + 'px')
+        .html(`
+          <div class="tooltip-title">${d.bucket}</div>
+          <div class="tooltip-row"><span class="tooltip-label">Input</span><span class="tooltip-value" style="color:${colors.input}">${fmtK(d.input_tokens)}</span></div>
+          <div class="tooltip-row"><span class="tooltip-label">Output</span><span class="tooltip-value" style="color:${colors.output}">${fmtK(d.output_tokens)}</span></div>
+          <div class="tooltip-row"><span class="tooltip-label">Cache Read</span><span class="tooltip-value" style="color:${colors.cache_read}">${fmtK(d.cache_read_tokens)}</span></div>
+          <div class="tooltip-row"><span class="tooltip-label">Cache Write</span><span class="tooltip-value" style="color:${colors.cache_creation}">${fmtK(d.cache_creation_tokens)}</span></div>
+          <div class="tooltip-row"><span class="tooltip-label">Events</span><span class="tooltip-value">${d.event_count}</span></div>
+        `);
+    })
+    .on('mouseleave', () => {
+      focus.style('display', 'none');
+      tooltip.classed('visible', false);
+    });
+}
+
+// =========================================================================
+// Donut Chart (Cost by Token Type)
+// =========================================================================
+function renderDonut(breakdown) {
+  const container = d3.select('#donut-chart');
+  container.html('');
+
+  const totals = breakdown.totals;
+  const costs = breakdown.cost_by_type || {};
+  const data = [
+    { label: 'Input', tokens: totals.input_tokens, cost: costs.input || 0, color: colors.input },
+    { label: 'Output', tokens: totals.output_tokens, cost: costs.output || 0, color: colors.output },
+    { label: 'Cache Read', tokens: totals.cache_read_tokens, cost: costs.cache_read || 0, color: colors.cache_read },
+    { label: 'Cache Write', tokens: totals.cache_creation_tokens, cost: costs.cache_creation || 0, color: colors.cache_creation },
+  ].filter(d => d.cost > 0);
+
+  if (data.length === 0) {
+    container.append('div').attr('class', 'empty-state').html('<p>No data</p>');
+    return;
+  }
+
+  const size = 260;
+  const radius = size / 2;
+  const inner = radius * 0.55;
+
+  const svg = container.append('svg')
+    .attr('width', size + 200)
+    .attr('height', size)
+    .append('g')
+    .attr('transform', `translate(${radius}, ${radius})`);
+
+  const pie = d3.pie().value(d => d.cost).sort(null).padAngle(0.02);
+  const arc = d3.arc().innerRadius(inner).outerRadius(radius);
+
+  svg.selectAll('path')
+    .data(pie(data))
+    .join('path')
+    .attr('d', arc)
+    .attr('fill', d => d.data.color)
+    .attr('fill-opacity', 0.8)
+    .attr('stroke', 'var(--surface)')
+    .attr('stroke-width', 2)
+    .on('mouseenter', function(event, d) {
+      d3.select(this).attr('fill-opacity', 1);
+      const totalCost = d3.sum(data, dd => dd.cost);
+      const pct = ((d.data.cost / totalCost) * 100).toFixed(1);
+      tooltip.classed('visible', true)
+        .style('left', (event.pageX + 12) + 'px')
+        .style('top', (event.pageY - 10) + 'px')
+        .html(`<div class="tooltip-title">${d.data.label}</div>
+               <div class="tooltip-row"><span class="tooltip-label">Cost</span><span class="tooltip-value">${fmtCost(d.data.cost)}</span></div>
+               <div class="tooltip-row"><span class="tooltip-label">Tokens</span><span class="tooltip-value">${fmtK(d.data.tokens)}</span></div>
+               <div class="tooltip-row"><span class="tooltip-label">Share</span><span class="tooltip-value">${pct}%</span></div>`);
+    })
+    .on('mouseleave', function() {
+      d3.select(this).attr('fill-opacity', 0.8);
+      tooltip.classed('visible', false);
+    });
+
+  // Center label — total cost
+  const totalCost = d3.sum(data, d => d.cost);
+  svg.append('text')
+    .attr('text-anchor', 'middle')
+    .attr('dy', '-0.3em')
+    .style('font-size', '1.3rem')
+    .style('font-weight', '700')
+    .style('fill', 'var(--green)')
+    .text(fmtCost(totalCost));
+  svg.append('text')
+    .attr('text-anchor', 'middle')
+    .attr('dy', '1.2em')
+    .style('font-size', '0.75rem')
+    .style('fill', 'var(--text-dim)')
+    .text('cost by type');
+
+  // Legend
+  const legend = d3.select('#donut-chart svg')
+    .append('g')
+    .attr('transform', `translate(${size + 20}, ${40})`);
+
+  data.forEach((d, i) => {
+    const g = legend.append('g').attr('transform', `translate(0, ${i * 28})`);
+    g.append('rect').attr('width', 12).attr('height', 12).attr('rx', 3).attr('fill', d.color);
+    g.append('text').attr('x', 20).attr('y', 10).style('font-size', '0.8rem').style('fill', 'var(--text)').text(`${d.label}: ${fmtCost(d.cost)} (${fmtK(d.tokens)})`);
+  });
+}
+
+// =========================================================================
+// Top Tools Bar Chart
+// =========================================================================
+function renderToolsChart(breakdown) {
+  const container = d3.select('#tools-chart');
+  container.html('');
+
+  const data = (breakdown.top_tools || []).slice(0, 10);
+  if (data.length === 0) {
+    container.append('div').attr('class', 'empty-state').html('<p>No tool usage recorded yet</p>');
+    return;
+  }
+
+  const margin = { top: 10, right: 20, bottom: 30, left: 140 };
+  const barH = 28;
+  const height = data.length * barH + margin.top + margin.bottom;
+  const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
+
+  const svg = container.append('svg')
+    .attr('width', width + margin.left + margin.right)
+    .attr('height', height)
+    .append('g')
+    .attr('transform', `translate(${margin.left},${margin.top})`);
+
+  const x = d3.scaleLinear()
+    .domain([0, d3.max(data, d => d.total_tokens) * 1.1])
+    .range([0, width]);
+
+  const y = d3.scaleBand()
+    .domain(data.map(d => d.tool_name || 'unknown'))
+    .range([0, data.length * barH])
+    .padding(0.25);
+
+  svg.selectAll('rect')
+    .data(data)
+    .join('rect')
+    .attr('x', 0)
+    .attr('y', d => y(d.tool_name || 'unknown'))
+    .attr('width', d => x(d.total_tokens))
+    .attr('height', y.bandwidth())
+    .attr('fill', colors.accent2)
+    .attr('fill-opacity', 0.7)
+    .attr('rx', 4);
+
+  svg.selectAll('.bar-label')
+    .data(data)
+    .join('text')
+    .attr('class', 'bar-label')
+    .attr('x', d => x(d.total_tokens) + 6)
+    .attr('y', d => y(d.tool_name || 'unknown') + y.bandwidth() / 2)
+    .attr('dy', '0.35em')
+    .style('font-size', '0.75rem')
+    .style('fill', 'var(--text-dim)')
+    .text(d => `${fmtK(d.total_tokens)} (${d.count}x)`);
+
+  svg.append('g')
+    .call(d3.axisLeft(y))
+    .call(g => g.select('.domain').remove())
+    .call(g => g.selectAll('.tick line').remove())
+    .selectAll('text')
+    .style('font-size', '0.75rem');
+}
+
+// =========================================================================
+// Model Donut Chart
+// =========================================================================
+function renderModelDonut(costData) {
+  const container = d3.select('#model-chart');
+  container.html('');
+
+  const data = (costData.by_model || [])
+    .map(d => ({ label: d.model.charAt(0).toUpperCase() + d.model.slice(1), value: d.total_tokens, cost: d.cost_usd, color: modelColors[d.model] || modelColors.unknown }))
+    .filter(d => d.value > 0);
+
+  if (data.length === 0) {
+    container.append('div').attr('class', 'empty-state').html('<p>No data</p>');
+    return;
+  }
+
+  const size = 260;
+  const radius = size / 2;
+  const inner = radius * 0.55;
+
+  const svg = container.append('svg')
+    .attr('width', size + 200)
+    .attr('height', size)
+    .append('g')
+    .attr('transform', `translate(${radius}, ${radius})`);
+
+  const pie = d3.pie().value(d => d.value).sort(null).padAngle(0.02);
+  const arc = d3.arc().innerRadius(inner).outerRadius(radius);
+
+  svg.selectAll('path')
+    .data(pie(data))
+    .join('path')
+    .attr('d', arc)
+    .attr('fill', d => d.data.color)
+    .attr('fill-opacity', 0.8)
+    .attr('stroke', 'var(--surface)')
+    .attr('stroke-width', 2)
+    .on('mouseenter', function(event, d) {
+      d3.select(this).attr('fill-opacity', 1);
+      const total = d3.sum(data, dd => dd.value);
+      const pct = ((d.data.value / total) * 100).toFixed(1);
+      tooltip.classed('visible', true)
+        .style('left', (event.pageX + 12) + 'px')
+        .style('top', (event.pageY - 10) + 'px')
+        .html(`<div class="tooltip-title">${d.data.label}</div>
+               <div class="tooltip-row"><span class="tooltip-label">Tokens</span><span class="tooltip-value">${fmtK(d.data.value)}</span></div>
+               <div class="tooltip-row"><span class="tooltip-label">Cost</span><span class="tooltip-value">${fmtCost(d.data.cost)}</span></div>
+               <div class="tooltip-row"><span class="tooltip-label">Share</span><span class="tooltip-value">${pct}%</span></div>`);
+    })
+    .on('mouseleave', function() {
+      d3.select(this).attr('fill-opacity', 0.8);
+      tooltip.classed('visible', false);
+    });
+
+  // Center label — total cost
+  svg.append('text')
+    .attr('text-anchor', 'middle')
+    .attr('dy', '-0.3em')
+    .style('font-size', '1.3rem')
+    .style('font-weight', '700')
+    .style('fill', 'var(--green)')
+    .text(fmtCost(costData.total_cost_usd));
+  svg.append('text')
+    .attr('text-anchor', 'middle')
+    .attr('dy', '1.2em')
+    .style('font-size', '0.75rem')
+    .style('fill', 'var(--text-dim)')
+    .text('estimated cost');
+
+  // Legend
+  const legend = d3.select('#model-chart svg')
+    .append('g')
+    .attr('transform', `translate(${size + 20}, ${40})`);
+
+  data.forEach((d, i) => {
+    const g = legend.append('g').attr('transform', `translate(0, ${i * 28})`);
+    g.append('rect').attr('width', 12).attr('height', 12).attr('rx', 3).attr('fill', d.color);
+    g.append('text').attr('x', 20).attr('y', 10).style('font-size', '0.8rem').style('fill', 'var(--text)').text(`${d.label}: ${fmtK(d.value)} (${fmtCost(d.cost)})`);
+  });
+}
+
+// =========================================================================
+// Model Time Series (Stacked Area)
+// =========================================================================
+function renderModelTimeSeries(data) {
+  const container = d3.select('#model-timeseries-chart');
+  container.html('');
+
+  const legendContainer = d3.select('#model-ts-legend');
+  legendContainer.html('');
+
+  if (!data.data || data.data.length === 0) {
+    container.append('div').attr('class', 'empty-state')
+      .html('<p>No model usage data yet</p>');
+    return;
+  }
+
+  const models = data.models || [];
+
+  // Build legend
+  models.forEach(m => {
+    const label = m.charAt(0).toUpperCase() + m.slice(1);
+    const color = modelColors[m] || modelColors.unknown;
+    legendContainer.append('div').attr('class', 'legend-item')
+      .html(`<div class="legend-dot" style="background:${color}"></div>${label}`);
+  });
+
+  const margin = { top: 20, right: 30, bottom: 40, left: 70 };
+  const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
+  const height = 320 - margin.top - margin.bottom;
+
+  const svg = container.append('svg')
+    .attr('width', width + margin.left + margin.right)
+    .attr('height', height + margin.top + margin.bottom)
+    .append('g')
+    .attr('transform', `translate(${margin.left},${margin.top})`);
+
+  const parseDate = (d) => {
+    if (d.includes('T')) return new Date(d);
+    if (d.includes('-W')) {
+      const [y, w] = d.split('-W');
+      const jan1 = new Date(+y, 0, 1);
+      return new Date(jan1.getTime() + (+w - 1) * 7 * 86400000);
+    }
+    if (d.match(/^\d{4}-\d{2}$/)) return new Date(d + '-01');
+    return new Date(d);
+  };
+
+  const series = data.data.map(d => ({
+    ...d,
+    date: parseDate(d.bucket),
+  }));
+
+  const stack = d3.stack().keys(models)(series);
+
+  const x = d3.scaleTime()
+    .domain(d3.extent(series, d => d.date))
+    .range([0, width]);
+
+  const yMax = stack.length > 0 ? d3.max(stack[stack.length - 1], d => d[1]) : 0;
+  const y = d3.scaleLinear()
+    .domain([0, (yMax || 1) * 1.1])
+    .nice()
+    .range([height, 0]);
+
+  // Grid lines
+  svg.append('g')
+    .attr('class', 'grid')
+    .call(d3.axisLeft(y).tickSize(-width).tickFormat(''))
+    .call(g => g.selectAll('.tick line').attr('stroke', '#2e3348').attr('stroke-dasharray', '2,4'))
+    .call(g => g.select('.domain').remove());
+
+  // Areas
+  const area = d3.area()
+    .x(d => x(d.data.date))
+    .y0(d => y(d[0]))
+    .y1(d => y(d[1]))
+    .curve(d3.curveMonotoneX);
+
+  svg.selectAll('.area-layer')
+    .data(stack)
+    .join('path')
+    .attr('class', 'area-layer')
+    .attr('d', area)
+    .attr('fill', d => modelColors[d.key] || modelColors.unknown)
+    .attr('fill-opacity', 0.6);
+
+  // Axes
+  svg.append('g')
+    .attr('transform', `translate(0,${height})`)
+    .call(d3.axisBottom(x).ticks(Math.min(series.length, 10)));
+
+  svg.append('g')
+    .call(d3.axisLeft(y).ticks(6).tickFormat(fmtK));
+
+  // Hover overlay
+  const focus = svg.append('g').style('display', 'none');
+  focus.append('line')
+    .attr('class', 'focus-line')
+    .attr('y1', 0).attr('y2', height)
+    .attr('stroke', '#fff').attr('stroke-opacity', 0.3)
+    .attr('stroke-dasharray', '4,4');
+
+  svg.append('rect')
+    .attr('width', width).attr('height', height)
+    .attr('fill', 'none')
+    .attr('pointer-events', 'all')
+    .on('mousemove', function(event) {
+      const [mx] = d3.pointer(event);
+      const date = x.invert(mx);
+      const bisect = d3.bisector(d => d.date).left;
+      const idx = Math.min(bisect(series, date), series.length - 1);
+      const d = series[idx];
+      if (!d) return;
+
+      focus.style('display', null);
+      focus.select('.focus-line').attr('x1', x(d.date)).attr('x2', x(d.date));
+
+      const rows = models.map(m => {
+        const label = m.charAt(0).toUpperCase() + m.slice(1);
+        const color = modelColors[m] || modelColors.unknown;
+        return `<div class="tooltip-row"><span class="tooltip-label">${label}</span><span class="tooltip-value" style="color:${color}">${fmtK(d[m] || 0)}</span></div>`;
+      }).join('');
+
+      tooltip.classed('visible', true)
+        .style('left', (event.pageX + 16) + 'px')
+        .style('top', (event.pageY - 10) + 'px')
+        .html(`<div class="tooltip-title">${d.bucket}</div>${rows}`);
+    })
+    .on('mouseleave', () => {
+      focus.style('display', 'none');
+      tooltip.classed('visible', false);
+    });
+}
+
+// =========================================================================
+// Sessions Table
+// =========================================================================
+function renderSessions(data) {
+  const container = d3.select('#sessions-table');
+  container.html('');
+
+  if (!data.sessions || data.sessions.length === 0) {
+    container.append('div').attr('class', 'empty-state').html('<h2>No sessions</h2>');
+    return;
+  }
+
+  const table = container.append('table');
+  const thead = table.append('thead').append('tr');
+  ['Session', 'Last Active', 'Turns', 'Tools', 'Input', 'Output', 'Cache', 'Total'].forEach(h => {
+    thead.append('th').text(h);
+  });
+
+  const tbody = table.append('tbody');
+
+  data.sessions.forEach(s => {
+    const tr = tbody.append('tr').on('click', () => toggleSession(s.session_id, tbody, tr));
+    tr.append('td').text(s.session_id.slice(0, 12) + '...');
+    tr.append('td').text(new Date(s.last_activity).toLocaleString());
+    tr.append('td').text(fmt(s.turn_count || 0));
+    tr.append('td').text(fmt(s.tool_use_count || 0));
+    tr.append('td').style('color', colors.input).text(fmtK(s.total_input_tokens));
+    tr.append('td').style('color', colors.output).text(fmtK(s.total_output_tokens));
+    tr.append('td').style('color', colors.cache_read).text(fmtK(s.total_cache_read));
+    tr.append('td').style('font-weight', '600').text(fmtK(s.total_tokens));
+  });
+
+  // Pagination
+  const pag = d3.select('#sessions-pagination');
+  pag.html('');
+  if (data.total_pages > 1) {
+    pag.append('button').text('← Prev').attr('disabled', data.page <= 1 ? true : null)
+      .on('click', () => { sessionsPage--; refresh(); });
+    pag.append('span').text(`Page ${data.page} of ${data.total_pages}`);
+    pag.append('button').text('Next →').attr('disabled', data.page >= data.total_pages ? true : null)
+      .on('click', () => { sessionsPage++; refresh(); });
+  }
+}
+
+async function toggleSession(sessionId, tbody, clickedRow) {
+  // Remove any existing expanded row
+  tbody.selectAll('.expand-row').remove();
+
+  if (expandedSession === sessionId) {
+    expandedSession = null;
+    return;
+  }
+
+  expandedSession = sessionId;
+
+  const expandTr = tbody.insert('tr', function() {
+    return clickedRow.node().nextSibling;
+  }).attr('class', 'expand-row');
+
+  const td = expandTr.append('td').attr('colspan', 8);
+  const content = td.append('div').attr('class', 'expand-content');
+  content.html('<div class="loading">Loading events...</div>');
+
+  try {
+    const data = await api(`/api/session/${sessionId}/events?per_page=200`);
+
+    content.html('');
+
+    // Header
+    const header = content.append('div').attr('class', 'event-item')
+      .style('font-weight', '600').style('color', 'var(--text-dim)').style('font-size', '0.7rem');
+    ['Time', 'Type', 'Detail', 'Input/Output', 'Total'].forEach(h => header.append('div').text(h));
+
+    data.events.forEach(e => {
+      const row = content.append('div').attr('class', 'event-item');
+      row.append('div').text(new Date(e.timestamp).toLocaleTimeString());
+      row.append('div').html(`<span class="badge badge-${e.event_type === 'turn' ? 'turn' : 'tool'}">${e.event_type}</span>`);
+      row.append('div').attr('class', 'preview-text').text(e.tool_name || e.prompt_preview || '—');
+      row.append('div').html(`<span style="color:${colors.input}">${fmtK(e.input_tokens)}</span> / <span style="color:${colors.output}">${fmtK(e.output_tokens)}</span>`);
+      row.append('div').style('font-weight', '600').text(fmtK(e.total_tokens));
+    });
+
+  } catch (err) {
+    content.html(`<div class="empty-state"><p>Error: ${err.message}</p></div>`);
+  }
+}
+
+// =========================================================================
+// Main refresh loop
+// =========================================================================
+async function refresh() {
+  try {
+    const savedScroll = window.scrollY;
+    const savedExpanded = expandedSession;
+
+    const [summary, timeseries, breakdown, sessions, costData, modelTs] = await Promise.all([
+      api(`/api/summary?period=${currentPeriod}`),
+      api(`/api/timeseries?period=${currentPeriod}`),
+      api(`/api/breakdown?period=${currentPeriod}`),
+      api(`/api/sessions?period=${currentPeriod}&page=${sessionsPage}`),
+      api(`/api/cost?period=${currentPeriod}`),
+      api(`/api/model-timeseries?period=${currentPeriod}`),
+    ]);
+
+    renderCards(summary);
+    renderTimeSeries(timeseries);
+    renderModelTimeSeries(modelTs);
+    renderDonut(breakdown);
+    renderModelDonut(costData);
+    renderToolsChart(breakdown);
+    renderSessions(sessions);
+
+    // Re-expand session if it was open before refresh
+    if (savedExpanded) {
+      expandedSession = savedExpanded;
+      const row = document.querySelector(`[data-session-id="${savedExpanded}"]`);
+      if (row) row.click();
+    }
+
+    // Restore scroll position
+    window.scrollTo(0, savedScroll);
+  } catch (err) {
+    console.error('Refresh error:', err);
+  }
+}
+
+// =========================================================================
+// Event handlers
+// =========================================================================
+document.querySelectorAll('.period-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.period-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentPeriod = tab.dataset.period;
+    sessionsPage = 1;
+    expandedSession = null;
+    refresh();
+  });
+});
+
+// Auto-refresh every 30 seconds
+setInterval(refresh, 30000);
+
+// Resize handler
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(refresh, 250);
+});
+
+// Initial load
+refresh();
+</script>
+</body>
+</html>

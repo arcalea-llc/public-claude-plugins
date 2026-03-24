@@ -1,0 +1,5 @@
+{
+  "opus": {"input": 15.0, "output": 75.0, "cache_read": 1.50, "cache_creation": 18.75},
+  "sonnet": {"input": 3.0, "output": 15.0, "cache_read": 0.30, "cache_creation": 3.75},
+  "haiku": {"input": 0.80, "output": 4.0, "cache_read": 0.08, "cache_creation": 1.0}
+}

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "token-tracker": {
+      "command": "python3",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/mcp-server.py"],
+      "env": {}
+    }
+  }
+}
