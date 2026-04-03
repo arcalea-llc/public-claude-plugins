@@ -1,6 +1,6 @@
 {
   "name": "token-tracker",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Track Claude Code token usage in a local SQLite database and visualize it with an interactive D3.js dashboard served via FastAPI",
   "author": { "name": "Arcalea" },
   "keywords": ["tokens", "usage", "tracking", "dashboard", "cost", "budget", "analytics"]
