@@ -57,6 +57,38 @@
     color: var(--accent);
   }
 
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .header-links {
+    display: flex;
+    gap: 8px;
+  }
+
+  .header-links a {
+    padding: 6px 12px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-dim);
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: all 0.2s;
+  }
+
+  .header-links a:hover {
+    color: var(--text);
+    border-color: var(--accent);
+  }
+
+  .header-links a.bug:hover {
+    border-color: var(--red);
+  }
+
   .period-tabs {
     display: flex;
     gap: 4px;
@@ -351,7 +383,13 @@
 
 <div class="container">
   <header>
-    <h1><span>Claude</span> Token Tracker</h1>
+    <div class="header-left">
+      <h1><span>Claude</span> Token Tracker</h1>
+      <div class="header-links">
+        <a href="https://github.com/arcalea-llc/public-claude-plugins/issues/new?template=bug_report.yml&labels=bug&title=%5Bbug%5D+" target="_blank" rel="noopener" class="bug">Report Bug</a>
+        <a href="https://github.com/arcalea-llc/public-claude-plugins/issues/new?template=feature_request.yml&labels=enhancement&title=%5Bfeature%5D+" target="_blank" rel="noopener">Request Feature</a>
+      </div>
+    </div>
     <div class="period-tabs" id="period-tabs">
       <button class="period-tab active" data-period="day">Day</button>
       <button class="period-tab" data-period="week">Week</button>
@@ -479,6 +517,52 @@ function renderCards(summary) {
 }
 
 // =========================================================================
+// Gap-fill: insert zero-valued entries for missing time buckets
+// =========================================================================
+function fillTimeGaps(series, bucketSize) {
+  if (series.length < 2) return series;
+
+  const stepMs = {
+    hour:  3600000,
+    day:   86400000,
+    week:  7 * 86400000,
+    month: null, // handled specially
+  }[bucketSize] || 86400000;
+
+  const existing = new Map(series.map(d => [d.date.getTime(), d]));
+  const keys = Object.keys(series[0]).filter(k => k !== 'bucket' && k !== 'date');
+  const zeroEntry = (date) => {
+    const entry = { date, bucket: '' };
+    keys.forEach(k => entry[k] = 0);
+    return entry;
+  };
+
+  const filled = [];
+  const minDate = series[0].date;
+  const maxDate = series[series.length - 1].date;
+
+  if (bucketSize === 'month') {
+    let cur = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+    const end = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
+    while (cur <= end) {
+      const match = existing.get(cur.getTime());
+      filled.push(match || zeroEntry(new Date(cur)));
+      cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+    }
+  } else {
+    let cur = minDate.getTime();
+    const end = maxDate.getTime();
+    while (cur <= end) {
+      const match = existing.get(cur);
+      filled.push(match || zeroEntry(new Date(cur)));
+      cur += stepMs;
+    }
+  }
+
+  return filled;
+}
+
+// =========================================================================
 // Time Series (Stacked Area)
 // =========================================================================
 function renderTimeSeries(data) {
@@ -520,10 +604,11 @@ function renderTimeSeries(data) {
     return new Date(d);
   };
 
-  const series = data.data.map(d => ({
+  const rawSeries = data.data.map(d => ({
     ...d,
     date: parseDate(d.bucket),
   }));
+  const series = fillTimeGaps(rawSeries, data.bucket_size);
 
   const stack = d3.stack().keys(keys)(series);
 
@@ -885,10 +970,11 @@ function renderModelTimeSeries(data) {
     return new Date(d);
   };
 
-  const series = data.data.map(d => ({
+  const rawSeries = data.data.map(d => ({
     ...d,
     date: parseDate(d.bucket),
   }));
+  const series = fillTimeGaps(rawSeries, data.bucket_size);
 
   const stack = d3.stack().keys(models)(series);
 

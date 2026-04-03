@@ -249,7 +249,7 @@ def _worker_post(path):
 # MCP Protocol (JSON-RPC 2.0 over STDIO)
 # ---------------------------------------------------------------------------
 
-SERVER_INFO = {"name": "token-tracker", "version": "0.1.6"}
+SERVER_INFO = {"name": "token-tracker", "version": "0.1.8"}
 CAPABILITIES = {"tools": {}}
 
 TOOLS = [
